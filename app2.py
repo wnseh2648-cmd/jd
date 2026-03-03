@@ -106,14 +106,23 @@ MOLIT_NUM_ROWS = 1000
 MOLIT_MAX_PAGES = 30         
 
 # 폰트 및 시각화 설정
+import matplotlib.font_manager as fm
+
 if platform.system() == "Windows":
     mpl.rcParams["font.family"] = "Malgun Gothic"
 elif platform.system() == "Darwin":
     mpl.rcParams["font.family"] = "AppleGothic"
 else:
-    mpl.rcParams["font.family"] = "DejaVu Sans"
+    # 💡 스트림릿 클라우드(리눅스)용 나눔고딕 폰트 적용
+    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+    if os.path.exists(font_path):
+        font_name = fm.FontProperties(fname=font_path).get_name()
+        mpl.rcParams['font.family'] = font_name
+    else:
+        mpl.rcParams['font.family'] = 'NanumGothic'
+
 mpl.rcParams["axes.unicode_minus"] = False
-mpl.rcParams['figure.dpi'] = 150  
+mpl.rcParams['figure.dpi'] = 150
 
 # =================================================
 # [STEP 2] 거시경제(매크로) 데이터 및 지역 맵핑 로직
