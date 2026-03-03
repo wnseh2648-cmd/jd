@@ -345,7 +345,7 @@ if filtered.empty:
 
 # 주요 지표 KPI
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("월 평균 거래량", f"{int(filtered['거래량'].dropna().mean()):,}건")
+col1.metric("거래량", f"{int(filtered['거래량'].dropna().mean()):,}건")
 col2.metric("평균 매매가격", f"{round(filtered['평균매매가격(천만원)'].dropna().mean(), 1)}천만원")
 col3.metric("평균 매매지수", round(filtered["매매지수"].dropna().mean(), 1), help="기준 시점(100) 대비 아파트 가격의 변동 수준을 나타내는 지표입니다.")
 
