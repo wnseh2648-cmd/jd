@@ -357,7 +357,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # =================================================
 # 시각화 차트 1: 다중 지역 크로스 분석 (매매량 vs 기준금리/ 평균매매가 vs 기준금리)
 # =================================================
-st.markdown("### 📊 다중 지역 크로스 분석 (매매량 vs 기준금리/ 평균매매가 vs 기준금리)")
+st.markdown("### 📊 다중 지역 크로스 분석 (거래량 vs 기준금리/ 평균매매가 vs 기준금리)")
 st.caption("선택한 지역들의 수요(거래량)와 가격(평균매매가)이 거시경제 지표(기준금리) 변화에 어떻게 반응하는지 입체적으로 비교합니다.")
 
 compare_regions = st.multiselect(
@@ -380,9 +380,9 @@ if compare_regions:
     for r in compare_regions:
         r_data = df[(df["지역"] == r) & mask_date].sort_values("연월")
         if not r_data.empty:
-            ax1_vol.plot(r_data["연월"], r_data["거래량"], marker='o', markersize=4, label=f"{r} 매매량", linewidth=2, alpha=0.8)
+            ax1_vol.plot(r_data["연월"], r_data["거래량"], marker='o', markersize=4, label=f"{r} 거래량", linewidth=2, alpha=0.8)
 
-    ax1_vol.set_ylabel("매매량 (건)", fontweight='bold', color='#1E293B')
+    ax1_vol.set_ylabel("거래량 (건)", fontweight='bold', color='#1E293B')
     ax1_vol.grid(alpha=0.3, linestyle='--')
     ax1_vol.spines['top'].set_visible(False)
     ax1_vol.legend(loc="upper left", bbox_to_anchor=(0.0, 1.15), ncol=len(compare_regions), frameon=False)
@@ -516,7 +516,7 @@ with colC:
         ax1.spines['left'].set_color('#94A3B8')
         ax1.spines['bottom'].set_color('#94A3B8')
         ax1.tick_params(colors='#475569', labelsize=9)
-        ax1.set_ylabel("매매량 (건)", color='#475569', fontweight='bold', fontsize=10)
+        ax1.set_ylabel("거래량 (건)", color='#475569', fontweight='bold', fontsize=10)
         
         ax1.legend(loc='lower left', bbox_to_anchor=(0.0, 1.02), ncol=2, frameon=False, fontsize=9)
         plt.xticks(rotation=45, ha='right')
@@ -600,7 +600,7 @@ st.markdown("""
 # =================================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("### 📊 머신러닝 다중 모델: 시장 핵심 동인(Driver) 추출")
-st.caption("선택한 지역의 가격 변동에 대해 '기준금리'와 '매매량(수요)' 중 어떤 요인이 실질적으로 더 강력한 영향을 미치는지 선형 회귀와 앙상블 모델로 교차 분석합니다.")
+st.caption("선택한 지역의 가격 변동에 대해 '기준금리'와 '거래량(수요)' 중 어떤 요인이 실질적으로 더 강력한 영향을 미치는지 선형 회귀와 앙상블 모델로 교차 분석합니다.")
 
 df_ml = filtered[["기준금리(%)", "거래량", "평균매매가격(천만원)"]].dropna()
 
@@ -631,7 +631,7 @@ if len(df_ml) > 5:
         fig_ml, ax_ml = plt.subplots(figsize=(5, 5))
         fig_ml.patch.set_facecolor('white')
         
-        features = ['기준금리', '매매량']
+        features = ['기준금리', '거래량']
         coefs = [coef_rate, coef_vol]
         colors = ['#F87171' if c < 0 else '#1D4ED8' for c in coefs]
         
