@@ -329,7 +329,7 @@ with st.sidebar:
     end_month = st.selectbox("🗓️ 종료 월", months, index=len(months) - 1)
     
     st.markdown("---")
-    st.markdown("👨‍💻 **데이터 파이프라인**\n- 공공데이터포털 실거래가 API\n- 부동산 통계정보시스템\n- 한국은행 경제통계시스템 API\n- 머신러닝 회귀분석 \n- OpenAI GPT-5.2")
+    st.markdown("👨‍💻 **데이터 파이프라인**\n- 공공데이터포털 실거래가 API\n- 부동산 통계정보시스템\n- 한국은행 경제통계시스템 API\n- 머신러닝 회귀분석 \n- OpenAI GPT-4o")
 
 filtered = df[(df["지역"] == region) & 
               (df["연월"] >= pd.to_datetime(start_month)) & 
@@ -724,7 +724,7 @@ st.markdown("---")
 st.markdown("### 🤖 실시간 AI 부동산 애널리스트 리포트")
 
 if prompt := st.chat_input("질문을 입력하세요 (예: 경기지역 26년도 아파트 전망 어때?, 부산진구 롯데캐슬 라센트 집값 전망)"):
-    with st.spinner("빅데이터 분석 및 GPT-5.2 추론을 진행 중입니다... 잠시만 기다려주세요."):
+    with st.spinner("빅데이터 분석 및 GPT-4o 추론을 진행 중입니다... 잠시만 기다려주세요."):
         lawd_cd, matched_area = detect_lawd_cd_from_question(prompt)
         target_region = detect_region_from_question(prompt) or resolve_macro_region_name(region_from_lawd_cd(lawd_cd)) or region
         
