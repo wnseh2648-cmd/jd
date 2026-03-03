@@ -64,7 +64,7 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    /* ⭐ 프리미엄 해석 가이드 커스텀 카드 스타일 (모든 섹션 공통 적용) */
+    /* ⭐ 프리미엄 해석 가이드 커스텀 카드 스타일 */
     .analysis-card {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -86,21 +86,23 @@ st.markdown("""
         color: #475569;
         line-height: 1.6;
     }
-    .factor-positive { color: #10B981; font-weight: 600; }
-    .factor-negative { color: #EF4444; font-weight: 600; }
     .highlight { background-color: #FEF3C7; font-weight: 600; padding: 0 4px; border-radius: 4px;}
 </style>
 """, unsafe_allow_html=True)
 
-# 스트림릿 시크릿에서 키를 불러옵니다.
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-client = OpenAI(api_key=OPENAI_API_KEY)
+# 💡 [보안 수정] OpenAI API 및 공공데이터 키를 Streamlit Secrets에서 불러오기
+try:
+    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    MOLIT_SERVICE_KEY = st.secrets["MOLIT_SERVICE_KEY"]
+except Exception as e:
+    st.error("API 키를 불러오는 데 실패했습니다. Streamlit Cloud의 Advanced Settings -> Secrets에 키가 올바르게 입력되었는지 확인해 주세요.")
+    st.stop()
+
 if "client" not in globals():
     st.error("OpenAI client가 정의되지 않았습니다.")
     st.stop()
 
-# 공공데이터 API 설정
-MOLIT_SERVICE_KEY = st.secrets["MOLIT_SERVICE_KEY"]
 MOLIT_MONTHS_BACK = 12       
 MOLIT_NUM_ROWS = 1000        
 MOLIT_MAX_PAGES = 30         
@@ -108,21 +110,22 @@ MOLIT_MAX_PAGES = 30
 # 폰트 및 시각화 설정
 import matplotlib.font_manager as fm
 
-if platform.system() == "Windows":
-    mpl.rcParams["font.family"] = "Malgun Gothic"
-elif platform.system() == "Darwin":
-    mpl.rcParams["font.family"] = "AppleGothic"
-else:
-    # 💡 스트림릿 클라우드(리눅스)용 나눔고딕 폰트 적용
-    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-    if os.path.exists(font_path):
-        font_name = fm.FontProperties(fname=font_path).get_name()
-        mpl.rcParams['font.family'] = font_name
+def set_korean_font():
+    if platform.system() == "Windows":
+        return "Malgun Gothic"
+    elif platform.system() == "Darwin":
+        return "AppleGothic"
     else:
-        mpl.rcParams['font.family'] = 'NanumGothic'
+        # 스트림릿 클라우드(리눅스) 환경
+        font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+        if os.path.exists(font_path):
+            fm.fontManager.addfont(font_path)
+            return "NanumGothic"
+        return "sans-serif"
 
+mpl.rcParams['font.family'] = set_korean_font()
 mpl.rcParams["axes.unicode_minus"] = False
-mpl.rcParams['figure.dpi'] = 150
+mpl.rcParams['figure.dpi'] = 150  
 
 # =================================================
 # [STEP 2] 거시경제(매크로) 데이터 및 지역 맵핑 로직
@@ -352,9 +355,10 @@ st.caption("※ **매매지수란?** 특정 기준 시점의 아파트 가격을
 st.markdown("<br>", unsafe_allow_html=True)
 
 # =================================================
-# 시각화 차트 1: 다중 지역 비교 (프리미엄 라인)
+# 시각화 차트 1: 다중 지역 크로스 분석 (매매량 vs 기준금리/ 평균매매가 vs 기준금리)
 # =================================================
-st.markdown("### 📊 다중 지역 크로스 분석 (매매량 vs 기준금리)")
+st.markdown("### 📊 다중 지역 크로스 분석 (매매량 vs 기준금리/ 평균매매가 vs 기준금리)")
+st.caption("선택한 지역들의 수요(거래량)와 가격(평균매매가)이 거시경제 지표(기준금리) 변화에 어떻게 반응하는지 입체적으로 비교합니다.")
 
 compare_regions = st.multiselect(
     "비교할 지역들을 자유롭게 선택하세요.",
@@ -363,28 +367,50 @@ compare_regions = st.multiselect(
 )
 
 if compare_regions:
-    fig_comp, ax1_comp = plt.subplots(figsize=(12, 4.5))
+    # 💡 위아래 2개의 차트 생성 (sharex=True로 X축 연월을 공유)
+    fig_comp, (ax1_vol, ax1_price) = plt.subplots(nrows=2, ncols=1, figsize=(12, 8), sharex=True)
     fig_comp.patch.set_facecolor('white')
-    mask_date = (df["연월"] >= pd.to_datetime(start_month)) & (df["연월"] <= pd.to_datetime(end_month) + pd.offsets.MonthEnd(0))
     
+    mask_date = (df["연월"] >= pd.to_datetime(start_month)) & (df["연월"] <= pd.to_datetime(end_month) + pd.offsets.MonthEnd(0))
+    rate_data = df[mask_date][["연월", "기준금리(%)"]].drop_duplicates().sort_values("연월")
+    
+    # -----------------------------------------------------
+    # [상단 차트] 1. 거래량 vs 기준금리
+    # -----------------------------------------------------
     for r in compare_regions:
         r_data = df[(df["지역"] == r) & mask_date].sort_values("연월")
         if not r_data.empty:
-            ax1_comp.plot(r_data["연월"], r_data["거래량"], marker='o', markersize=5, label=f"{r} 매매량", linewidth=2, alpha=0.8)
+            ax1_vol.plot(r_data["연월"], r_data["거래량"], marker='o', markersize=4, label=f"{r} 매매량", linewidth=2, alpha=0.8)
 
-    ax1_comp.set_ylabel("매매량 (건)", fontweight='bold')
-    ax1_comp.set_xlabel("연월", fontweight='bold')
-    ax1_comp.grid(alpha=0.3, linestyle='--')
-    ax1_comp.spines['top'].set_visible(False)
-    ax1_comp.legend(loc="upper left", bbox_to_anchor=(0.0, 1.15), ncol=len(compare_regions), frameon=False)
+    ax1_vol.set_ylabel("매매량 (건)", fontweight='bold', color='#1E293B')
+    ax1_vol.grid(alpha=0.3, linestyle='--')
+    ax1_vol.spines['top'].set_visible(False)
+    ax1_vol.legend(loc="upper left", bbox_to_anchor=(0.0, 1.15), ncol=len(compare_regions), frameon=False)
     
-    ax2_comp = ax1_comp.twinx()
-    rate_data = df[mask_date][["연월", "기준금리(%)"]].drop_duplicates().sort_values("연월")
+    ax2_vol = ax1_vol.twinx()
+    ax2_vol.plot(rate_data["연월"], rate_data["기준금리(%)"], color="#DC2626", linestyle=":", linewidth=2.5, label="기준금리(%)")
+    ax2_vol.set_ylabel("기준금리 (%)", color="#DC2626", fontweight='bold')
+    ax2_vol.spines['top'].set_visible(False)
+    ax2_vol.legend(loc="upper right", bbox_to_anchor=(1.0, 1.15), frameon=False)
+
+    # -----------------------------------------------------
+    # [하단 차트] 2. 평균매매가격 vs 기준금리
+    # -----------------------------------------------------
+    for r in compare_regions:
+        r_data = df[(df["지역"] == r) & mask_date].sort_values("연월")
+        if not r_data.empty:
+            ax1_price.plot(r_data["연월"], r_data["평균매매가격(천만원)"], marker='s', markersize=4, label=f"{r} 평균매매가", linewidth=2, alpha=0.8)
+
+    ax1_price.set_ylabel("평균매매가격 (천만원)", fontweight='bold', color='#1E293B')
+    ax1_price.set_xlabel("연월", fontweight='bold', color='#1E293B')
+    ax1_price.grid(alpha=0.3, linestyle='--')
+    ax1_price.spines['top'].set_visible(False)
+    ax1_price.legend(loc="upper left", bbox_to_anchor=(0.0, 1.15), ncol=len(compare_regions), frameon=False)
     
-    ax2_comp.plot(rate_data["연월"], rate_data["기준금리(%)"], color="#DC2626", linestyle=":", linewidth=3, label="기준금리(%)")
-    ax2_comp.set_ylabel("기준금리 (%)", color="#DC2626", fontweight='bold')
-    ax2_comp.spines['top'].set_visible(False)
-    ax2_comp.legend(loc="upper right", bbox_to_anchor=(1.0, 1.15), frameon=False)
+    ax2_price = ax1_price.twinx()
+    ax2_price.plot(rate_data["연월"], rate_data["기준금리(%)"], color="#DC2626", linestyle=":", linewidth=2.5, label="기준금리(%)")
+    ax2_price.set_ylabel("기준금리 (%)", color="#DC2626", fontweight='bold')
+    ax2_price.spines['top'].set_visible(False)
 
     fig_comp.tight_layout()
     st.pyplot(fig_comp)
@@ -394,14 +420,76 @@ else:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # =================================================
-# 시각화 차트 2: 매크로 시장 추세 분석 및 히트맵
+# 시각화 차트 2: 매크로 시장 상관관계 및 2026 추세 예측
 # =================================================
-st.markdown("### 📈 매크로 시장 추세 분석")
-colA, colB = st.columns(2)
+st.markdown("### 📈 데이터 상관관계 및 2026년 추세 예측")
+st.caption("거시 지표 간의 인과관계를 파악하고, 이를 바탕으로 2026년까지의 수요(거래량)와 가격(매매가) 추이를 선형 회귀로 예측합니다.")
+
+# -------------------------------------------------
+# 1단 상단: 상관관계 히트맵 (먼저 보여주기)
+# -------------------------------------------------
+colA, colB = st.columns([1, 1])
 
 with colA:
-    st.markdown("#### 1. 거래량 추세 및 2026 선형 회귀 예측")
+    st.markdown("#### 1. 거시 지표 상관관계 (Heatmap)")
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
+    fig2.patch.set_facecolor('white')
+    cols = ["거래량", "평균매매가격(천만원)", "매매지수", "기준금리(%)"]
+    tmp_corr = filtered[cols].dropna()
     
+    if len(tmp_corr) >= 3:
+        corr = tmp_corr.corr()
+        im = ax2.imshow(corr, cmap="coolwarm", vmin=-1, vmax=1, aspect='auto', alpha=0.9)
+        
+        ax2.set_xticks(range(len(cols)))
+        ax2.set_yticks(range(len(cols)))
+        ax2.set_xticklabels(cols, rotation=30, ha="right", fontsize=9, color='#475569')
+        ax2.set_yticklabels(cols, fontsize=9, color='#475569')
+        
+        for edge, spine in ax2.spines.items():
+            spine.set_visible(False)
+        ax2.set_xticks(np.arange(corr.shape[1]+1)-.5, minor=True)
+        ax2.set_yticks(np.arange(corr.shape[0]+1)-.5, minor=True)
+        ax2.grid(which="minor", color="white", linestyle='-', linewidth=2.5)
+        ax2.tick_params(which="minor", bottom=False, left=False)
+        ax2.tick_params(axis='both', colors='#475569')
+        
+        for i in range(len(cols)):
+            for j in range(len(cols)):
+                text_col = "white" if abs(corr.iloc[i, j]) > 0.5 else "#1E293B"
+                ax2.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", color=text_col, fontweight='bold', fontsize=10)
+                
+        cbar = fig2.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
+        cbar.ax.tick_params(labelsize=8, colors='#475569')
+        
+        fig2.tight_layout()
+        st.pyplot(fig2)
+
+with colB:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="analysis-card" style="margin-top: 10px; min-height: 250px; background-color: #F8FAFC; border-left: 5px solid #3B82F6;">
+        <div class="analysis-title">📊 1. 거시 지표 상관관계 (Heatmap) 해석</div>
+        <div class="analysis-content">
+            부동산 시장을 움직이는 핵심 지표 간의 <b>인과관계</b>를 숫자로 증명합니다.
+            <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
+                <li><b>금리와 매매가/거래량 (파란색 띄는 경우):</b> 금리가 오르면 대출 이자 부담으로 매수 심리가 얼어붙어, 거래량이 줄고 가격이 하락하는 전형적인 <b>역상관관계(-)</b>를 보여줍니다.</li>
+                <li><b>거래량과 매매가 (빨간색 띄는 경우):</b> 시장에 매수자가 많아져 거래가 활발해질수록 실거래가가 점진적으로 상승하는 <b>정상관관계(+)</b> 패턴을 의미합니다.</li>
+            </ul>
+            <span style="font-size:0.85rem; color:#64748B;">※ 지역마다 금리 민감도가 다릅니다. 이 숫자의 절대값이 클수록 외부 경제 충격에 크게 흔들리는 지역임을 뜻합니다.</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# -------------------------------------------------
+# 2단 하단: 거래량 및 평균매매가 추세 예측
+# -------------------------------------------------
+colC, colD = st.columns(2)
+
+with colC:
+    st.markdown("#### 2. 거래량 추세 및 2026년 예측")
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     fig1.patch.set_facecolor('white')
     df_pred = filtered[["연월", "거래량"]].dropna().copy().reset_index(drop=True)
@@ -436,63 +524,76 @@ with colA:
         st.pyplot(fig1)
         
         st.markdown("""
-        <div class="analysis-card" style="margin-top: 10px; min-height: 220px;">
-            <div class="analysis-title">📊 거래량 회귀 예측 가이드</div>
-            <div class="analysis-content">
-                과거 매매량 추이(<span style="color:#1D4ED8; font-weight:bold;">파란 실선</span>)를 바탕으로 선형 회귀 알고리즘이 <b>2026년 매수 심리(<span style="color:#F59E0B; font-weight:bold;">노란 점선</span>)</b>를 예측합니다.<br><br>
-                <span style="font-size:0.85rem; color:#64748B;">※ 점선이 우상향할 경우, 향후 시장의 매수 활력이 회복될 가능성이 높음을 시사합니다.</span>
+        <div class="analysis-card" style="margin-top: 10px; min-height: 190px; display: flex; flex-direction: column; justify-content: center;">
+            <div class="analysis-title">📈 2. 거래량(수요) 추세 해석</div>
+            <div class="analysis-content" style="line-height: 1.6;">
+                시장의 선행 지표인 <b>'수요(매수 심리)'</b>의 흐름을 분석합니다.<br>
+                과거의 매매 빈도(파란 실선)를 선형 회귀로 학습하여 <b>2026년 매수세(노란 점선)</b>를 예측합니다.<br>
+                <div style="margin-top: 10px; padding: 10px; background-color: #EFF6FF; border-radius: 8px;">
+                    <span style="font-size:0.9rem; color:#1E40AF;">💡 <b>인사이트:</b> 점선이 우상향을 그린다면, 관망하던 대기 수요자들이 시장에 다시 진입하며 거래 빈도가 점진적으로 회복되고 있음을 시사합니다.</span>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-with colB:
-    st.markdown("#### 2. 거시 지표 상관관계 (Heatmap)")
-    fig2, ax2 = plt.subplots(figsize=(6, 4))
-    fig2.patch.set_facecolor('white')
-    cols = ["거래량", "평균매매가격(천만원)", "매매지수", "기준금리(%)"]
-    tmp_corr = filtered[cols].dropna()
+with colD:
+    st.markdown("#### 3. 평균매매가 추세 및 2026 예측")
+    fig1_p, ax1_p = plt.subplots(figsize=(6, 4))
+    fig1_p.patch.set_facecolor('white')
+    df_pred_p = filtered[["연월", "평균매매가격(천만원)"]].dropna().copy().reset_index(drop=True)
     
-    if len(tmp_corr) >= 3:
-        corr = tmp_corr.corr()
-        im = ax2.imshow(corr, cmap="coolwarm", vmin=-1, vmax=1, aspect='auto', alpha=0.9)
+    if len(df_pred_p) >= 3:
+        df_pred_p["t"] = np.arange(len(df_pred_p))
+        coef_p = np.polyfit(df_pred_p["t"], df_pred_p["평균매매가격(천만원)"], 1)
         
-        ax2.set_xticks(range(len(cols)))
-        ax2.set_yticks(range(len(cols)))
-        ax2.set_xticklabels(cols, rotation=30, ha="right", fontsize=9, color='#475569')
-        ax2.set_yticklabels(cols, fontsize=9, color='#475569')
+        all_future_p = pd.date_range(start=df_pred_p["연월"].iloc[-1] + pd.offsets.MonthBegin(1), end=pd.Timestamp("2026-12-01"), freq="MS")
         
-        for edge, spine in ax2.spines.items():
-            spine.set_visible(False)
-        ax2.set_xticks(np.arange(corr.shape[1]+1)-.5, minor=True)
-        ax2.set_yticks(np.arange(corr.shape[0]+1)-.5, minor=True)
-        ax2.grid(which="minor", color="white", linestyle='-', linewidth=2.5)
-        ax2.tick_params(which="minor", bottom=False, left=False)
-        ax2.tick_params(axis='both', colors='#475569')
+        ax1_p.fill_between(df_pred_p["연월"], df_pred_p["평균매매가격(천만원)"], color="#10B981", alpha=0.15)
+        ax1_p.plot(df_pred_p["연월"], df_pred_p["평균매매가격(천만원)"], color="#047857", linewidth=2.5, label="실제 매매가")
         
-        for i in range(len(cols)):
-            for j in range(len(cols)):
-                text_col = "white" if abs(corr.iloc[i, j]) > 0.5 else "#1E293B"
-                ax2.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", color=text_col, fontweight='bold', fontsize=10)
-                
-        cbar = fig2.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
-        cbar.ax.tick_params(labelsize=8, colors='#475569')
+        if len(all_future_p) > 0:
+            last_date_p = df_pred_p["연월"].iloc[-1]
+            future_dates_p = [last_date_p] + list(all_future_p[all_future_p.year == 2026])
+            last_t_p = len(df_pred_p) - 1
+            future_t_p = np.arange(last_t_p, last_t_p + len(all_future_p[all_future_p.year == 2026]) + 1)
+            future_vals_p = coef_p[0] * future_t_p + coef_p[1]
+            ax1_p.plot(future_dates_p, future_vals_p, linestyle="--", color="#F59E0B", linewidth=2.5, label="2026 예측")
         
-        fig2.tight_layout()
-        st.pyplot(fig2)
+        ax1_p.grid(alpha=0.3, linestyle='--', color='#CBD5E1')
+        ax1_p.spines['top'].set_visible(False)
+        ax1_p.spines['right'].set_visible(False)
+        ax1_p.spines['left'].set_color('#94A3B8')
+        ax1_p.spines['bottom'].set_color('#94A3B8')
+        ax1_p.tick_params(colors='#475569', labelsize=9)
+        ax1_p.set_ylabel("평균매매가격 (천만원)", color='#475569', fontweight='bold', fontsize=10)
+        
+        ax1_p.legend(loc='lower left', bbox_to_anchor=(0.0, 1.02), ncol=2, frameon=False, fontsize=9)
+        plt.xticks(rotation=45, ha='right')
+        fig1_p.tight_layout()
+        st.pyplot(fig1_p)
         
         st.markdown("""
-        <div class="analysis-card" style="margin-top: 10px; min-height: 220px;">
-            <div class="analysis-title">🔥 상관관계(Heatmap) 읽는 법</div>
-            <div class="analysis-content">
-                두 지표가 함께 움직이는지 반대로 움직이는지(-1 ~ 1)를 나타냅니다.
-                <ul style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
-                    <li><span style="color:#DC2626; font-weight:bold;">빨간색(+):</span> 비례 (함께 상승/하락)</li>
-                    <li><span style="color:#2563EB; font-weight:bold;">파란색(-):</span> 반비례 (반대로 상승/하락)</li>
-                </ul>
-                <span style="font-size:0.85rem; color:#64748B;">※ AI가 시장 방향성을 도출하는 데 팩트 기반 자료로 활용됩니다.</span>
+        <div class="analysis-card" style="margin-top: 10px; min-height: 190px; display: flex; flex-direction: column; justify-content: center;">
+            <div class="analysis-title">💰 3. 평균매매가(자산가치) 추세 해석</div>
+            <div class="analysis-content" style="line-height: 1.6;">
+                실거주자 및 투자자에게 가장 중요한 <b>'자산 가치'</b>의 미래 방향성입니다.<br>
+                단기적인 가격 등락(초록 실선)에 흔들리지 않고, 시장의 장기적인 상승/하락 모멘텀을 <b>추세선(노란 점선)</b>으로 도출했습니다.<br>
+                <div style="margin-top: 10px; padding: 10px; background-color: #EFF6FF; border-radius: 8px;">
+                    <span style="font-size:0.9rem; color:#1E40AF;">💡 <b>인사이트:</b> 거래량 증가 시그널과 함께 추세선이 우상향한다면, 실거주 및 투자 관점에서 매우 긍정적인 자산 상승기 진입으로 해석할 수 있습니다.</span>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+# 종합 결론 박스
+st.markdown("""
+<div class="analysis-card" style="border-left: 5px solid #8B5CF6; background-color: #F5F3FF; margin-top: 0.5rem; padding: 1.2rem;">
+    <div class="analysis-title" style="color: #6D28D9; margin-bottom: 0.5rem;">💡 파이프라인 종합 코멘트</div>
+    <div class="analysis-content" style="color: #4C1D95; font-weight:500; font-size: 1.05rem; line-height: 1.6;">
+        본 시스템은 <b>1) 히트맵</b>을 통해 금리와 수요/가격 간의 경제적 인과관계를 팩트 체크하고, 이를 바탕으로 <b>2) 거래량(수요)</b>의 증감 패턴을 분석한 뒤, 최종적으로 <b>3) 평균매매가(가격)</b>의 중장기 모멘텀을 도출합니다. 데이터에 기반하여 2026년 부동산 시장의 사이클을 선제적으로 진단하는 논리적 분석 도구입니다.
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # =================================================
 # [STEP 4-2] 머신러닝 다중 모델 검증 (선형회귀 & 랜덤포레스트)
@@ -566,7 +667,6 @@ if len(df_ml) > 5:
         
         colors_rf = ['#F43F5E', '#3B82F6'] 
         
-        # 💡 [핵심 수정] pctdistance=0.75로 텍스트를 도넛 빵 중앙으로 이동시킴
         wedges, texts, autotexts = ax_rf.pie(
             importances, labels=features, autopct='%1.1f%%', startangle=140, 
             colors=colors_rf, wedgeprops=dict(width=0.4, edgecolor='white', linewidth=2),
@@ -574,7 +674,6 @@ if len(df_ml) > 5:
             pctdistance=0.75 
         )
         
-        # 💡 [핵심 수정] 하얀 글씨가 무조건 잘 보이도록 네이비색 반투명 박스 적용
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontsize(12)
