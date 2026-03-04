@@ -406,18 +406,24 @@ else:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # =================================================
-# ⭐ 전체 모델에 적용될 공통 시차 변수(optimal_lag) 계산
+# ⭐ 전체 모델에 적용될 이중 시차 변수 초기화 (에러 방지용)
 # =================================================
-optimal_lag = 0 # 기본값 (시차 분석 데이터가 부족할 경우 0개월 적용)
+optimal_lag_p = 0  # 매매가 시차 기본값
+optimal_lag_v = 0  # 거래량 시차 기본값
 
 st.markdown("### 📈 데이터 상관관계 및 2026년 추세 예측 (시차 분석 적용)")
 st.caption("거시 지표 간의 인과관계를 파악하고, 파생된 금리 시차(Time-Lag)를 적용하여 2026년까지의 흐름을 예측합니다.")
 
-# -------------------------------------------------
-# 1단 상단: 상관관계 히트맵 및 시차 분석 (Tabs 활용)
-# -------------------------------------------------
-tab1, tab2 = st.tabs(["🔥 1. 거시 지표 동시성 상관관계 (Heatmap)", "⏳ 2. 기준금리 ➔ 매매가 시차(Time-Lag) 분석"])
+# 💡 사용자님이 요청하신 정확한 순서의 3개 탭 구성
+tab1, tab2, tab3 = st.tabs([
+    "🔥 1. 거시 지표 동시성 상관관계 (Heatmap)", 
+    "⏳ 2. 기준금리 ➔ 매매가 시차(Time-Lag) 분석", 
+    "⏳ 3. 기준금리 ➔ 거래량 시차 분석"
+])
 
+# -------------------------------------------------
+# [탭 1] 거시 지표 동시성 상관관계 (Heatmap)
+# -------------------------------------------------
 with tab1:
     colA, colB = st.columns([1, 1])
     with colA:
@@ -441,7 +447,6 @@ with tab1:
             ax2.set_yticks(np.arange(corr.shape[0]+1)-.5, minor=True)
             ax2.grid(which="minor", color="white", linestyle='-', linewidth=2.5)
             ax2.tick_params(which="minor", bottom=False, left=False)
-            ax2.tick_params(axis='both', colors='#475569')
             
             for i in range(len(cols)):
                 for j in range(len(cols)):
@@ -449,8 +454,7 @@ with tab1:
                     ax2.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", color=text_col, fontweight='bold', fontsize=10)
                     
             cbar = fig2.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
-            cbar.ax.tick_params(labelsize=8, colors='#475569')
-            
+            cbar.ax.tick_params(labelsize=8)
             fig2.tight_layout()
             st.pyplot(fig2)
 
@@ -462,74 +466,115 @@ with tab1:
             <div class="analysis-content">
                 현재 시점(동일 연월)에서 지표 간의 <b>인과관계</b>를 숫자로 증명합니다.
                 <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
-                    <li><b>금리와 매매가/거래량 (파란색):</b> 금리가 오르면 매수 심리가 얼어붙어, 거래량이 줄고 가격이 하락하는 전형적인 <b>역상관관계(-)</b>입니다.</li>
+                    <li><b>금리와 매매가/거래량 (파란색):</b> 금리가 오르면 매수 심리가 얼어붙어 거래량이 줄고 가격이 하락하는 <b>역상관관계(-)</b>입니다.</li>
                     <li><b>거래량과 매매가 (빨간색):</b> 매수세가 활발해질수록 가격이 점진적으로 상승하는 <b>정상관관계(+)</b>입니다.</li>
                 </ul>
-                <span style="font-size:0.85rem; color:#64748B;">※ 단, 부동산 시장은 금리 변동이 즉각적으로 반영되지 않고 서서히 스며드는 특성이 있습니다. (옆 탭의 시차 분석 참조)</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
+# 공통 시차 분석용 데이터 준비
+df_lag = filtered[["연월", "기준금리(%)", "거래량", "평균매매가격(천만원)"]].dropna().sort_values("연월")
+
+# -------------------------------------------------
+# [탭 2] 기준금리 ➔ 매매가 시차 분석 (사용자 요청 순서 반영)
+# -------------------------------------------------
 with tab2:
-    colC, colD = st.columns([1, 1])
-    with colC:
-        df_lag = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].dropna().sort_values("연월")
-        
+    col_p1, col_p2 = st.columns([1, 1])
+    with col_p1:
         if len(df_lag) > 12:
             max_lag = 12
             lags = np.arange(0, max_lag + 1)
-            correlations = []
+            corr_price = [df_lag["평균매매가격(천만원)"].corr(df_lag["기준금리(%)"].shift(lag)) for lag in lags]
             
-            for lag in lags:
-                shifted_rate = df_lag["기준금리(%)"].shift(lag)
-                corr_val = df_lag["평균매매가격(천만원)"].corr(shifted_rate)
-                correlations.append(corr_val)
-                
-            fig_lag, ax_lag = plt.subplots(figsize=(6, 4))
-            fig_lag.patch.set_facecolor('white')
+            fig_lag_p, ax_lag_p = plt.subplots(figsize=(6, 4))
+            fig_lag_p.patch.set_facecolor('white')
             
-            bars = ax_lag.bar(lags, correlations, color="#94A3B8", alpha=0.7)
-            ax_lag.axhline(0, color='#1E293B', linewidth=1.5)
+            bars_p = ax_lag_p.bar(lags, corr_price, color="#94A3B8", alpha=0.7)
+            ax_lag_p.axhline(0, color='#1E293B', linewidth=1.5)
             
-            # 최적 시차(가장 강한 영향력) 도출
-            optimal_lag = int(np.nanargmax(np.abs(correlations)))
-            bars[optimal_lag].set_color("#DC2626")
-            bars[optimal_lag].set_alpha(1.0)
-            max_corr_val = correlations[optimal_lag]
+            # 매매가 최적 시차 계산
+            optimal_lag_p = int(np.nanargmax(np.abs(corr_price)))
+            bars_p[optimal_lag_p].set_color("#DC2626") # 빨간색 강조
+            bars_p[optimal_lag_p].set_alpha(1.0)
+            max_corr_p = corr_price[optimal_lag_p]
             
-            ax_lag.set_xlabel("시차 (개월)", fontweight='bold', color='#475569')
-            ax_lag.set_ylabel("상관계수 (R)", fontweight='bold', color='#475569')
-            ax_lag.set_xticks(lags)
-            
-            ax_lag.spines['top'].set_visible(False)
-            ax_lag.spines['right'].set_visible(False)
-            ax_lag.spines['left'].set_color('#94A3B8')
-            ax_lag.spines['bottom'].set_color('#94A3B8')
-            
-            fig_lag.tight_layout()
-            st.pyplot(fig_lag)
+            ax_lag_p.set_xlabel("시차 (개월)", fontweight='bold', color='#475569')
+            ax_lag_p.set_ylabel("상관계수 (R)", fontweight='bold', color='#475569')
+            ax_lag_p.set_xticks(lags)
+            ax_lag_p.spines['top'].set_visible(False)
+            ax_lag_p.spines['right'].set_visible(False)
+            fig_lag_p.tight_layout()
+            st.pyplot(fig_lag_p)
         else:
-            st.warning("시차 분석을 수행하기 위한 데이터(최소 1년 이상)가 부족합니다.")
+            st.warning("시차 분석을 수행하기 위한 데이터가 부족합니다.")
 
-    with colD:
+    with col_p2:
         if len(df_lag) > 12:
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(f"""
             <div class="analysis-card" style="min-height: 250px; background-color: #FEF2F2; border-left: 5px solid #DC2626;">
-                <div class="analysis-title">⏳ 기준금리 파급 시차(Time-Lag) 진단</div>
+                <div class="analysis-title">⏳ 매매가(자산가치) 파급 시차 진단</div>
                 <div class="analysis-content">
-                    한국은행이 기준금리를 올리거나 내렸을 때, 이 지역 아파트값에 <b>가장 강한 충격이 도달하는 시간(개월 수)</b>을 계산했습니다.
+                    한국은행이 기준금리를 조정했을 때, <b>실질적인 자산 가치(평균매매가)</b>에 파급 효과가 도달하는 시간을 계산합니다.
                     <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
-                        <li>분석 결과, 금리 변동은 평균적으로 <b><span style="color:#DC2626; font-size:1.1rem; font-weight:bold;">{optimal_lag}개월 뒤</span></b>의 매매가와 가장 강한 상관관계({max_corr_val:.2f})를 보입니다.</li>
+                        <li>분석 결과, 금리 변동은 평균적으로 <b><span style="color:#DC2626; font-size:1.1rem; font-weight:bold;">{optimal_lag_p}개월 뒤</span></b>의 매매가와 가장 강한 상관관계({max_corr_p:.2f})를 보입니다.</li>
                     </ul>
-                    <div style="margin-top: 10px; padding: 10px; background-color: #ffffff; border-radius: 8px; border: 1px solid #FCA5A5;">
-                        <span style="font-size:0.9rem; color:#991B1B;">💡 <b>인사이트:</b> 이제 하단에 그려질 모든 예측 모델은 이 <b>{optimal_lag}개월의 시간차</b>를 인과관계로 적용하여, 과거의 확실한 지표를 바탕으로 미래를 선행 예측합니다.</span>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #ffffff; border-radius: 8px;">
+                        <span style="font-size:0.9rem; color:#991B1B;">💡 <b>인사이트:</b> 하단의 매매가 예측 모델 및 머신러닝 동인 분석에는 바로 이 <b>{optimal_lag_p}개월</b>의 후행 시차가 파생 변수로 적용됩니다.</span>
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+# -------------------------------------------------
+# [탭 3] 기준금리 ➔ 거래량 시차 분석 (새로 추가됨)
+# -------------------------------------------------
+with tab3:
+    col_v1, col_v2 = st.columns([1, 1])
+    with col_v1:
+        if len(df_lag) > 12:
+            max_lag = 12
+            lags = np.arange(0, max_lag + 1)
+            corr_vol = [df_lag["거래량"].corr(df_lag["기준금리(%)"].shift(lag)) for lag in lags]
+            
+            fig_lag_v, ax_lag_v = plt.subplots(figsize=(6, 4))
+            fig_lag_v.patch.set_facecolor('white')
+            
+            bars_v = ax_lag_v.bar(lags, corr_vol, color="#94A3B8", alpha=0.7)
+            ax_lag_v.axhline(0, color='#1E293B', linewidth=1.5)
+            
+            # 거래량 최적 시차 계산
+            optimal_lag_v = int(np.nanargmax(np.abs(corr_vol)))
+            bars_v[optimal_lag_v].set_color("#3B82F6") # 파란색 강조
+            bars_v[optimal_lag_v].set_alpha(1.0)
+            max_corr_v = corr_vol[optimal_lag_v]
+            
+            ax_lag_v.set_xlabel("시차 (개월)", fontweight='bold', color='#475569')
+            ax_lag_v.set_ylabel("상관계수 (R)", fontweight='bold', color='#475569')
+            ax_lag_v.set_xticks(lags)
+            ax_lag_v.spines['top'].set_visible(False)
+            ax_lag_v.spines['right'].set_visible(False)
+            fig_lag_v.tight_layout()
+            st.pyplot(fig_lag_v)
+
+    with col_v2:
+        if len(df_lag) > 12:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="analysis-card" style="min-height: 250px; background-color: #EFF6FF; border-left: 5px solid #3B82F6;">
+                <div class="analysis-title">⏳ 거래량(매수심리) 파급 시차 진단</div>
+                <div class="analysis-content">
+                    금리 조정 시 가격보다 먼저 반응하는 <b>매수 심리(거래량)</b>의 선행 시차를 계산합니다.
+                    <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
+                        <li>분석 결과, 금리 변동은 평균적으로 <b><span style="color:#1D4ED8; font-size:1.1rem; font-weight:bold;">{optimal_lag_v}개월 뒤</span></b>의 거래량과 가장 강한 상관관계({max_corr_v:.2f})를 보입니다.</li>
+                    </ul>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #ffffff; border-radius: 8px;">
+                        <span style="font-size:0.9rem; color:#1E3A8A;">💡 <b>인사이트:</b> 대체로 거래량이 매매가보다 먼저 반응하는 선행성을 보입니다. 하단의 거래량 예측 모델에는 이 <b>{optimal_lag_v}개월</b>의 시차가 적용됩니다.</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
 # -------------------------------------------------
 # 2단 하단: 거래량 및 평균매매가 추세 예측 (★ 시차 적용 선형회귀)
