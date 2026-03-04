@@ -470,66 +470,109 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-with tab2:
-    colC, colD = st.columns([1, 1])
-    with colC:
-        df_lag = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].dropna().sort_values("연월")
-        
-        if len(df_lag) > 12:
-            max_lag = 12
-            lags = np.arange(0, max_lag + 1)
-            correlations = []
-            
-            for lag in lags:
-                shifted_rate = df_lag["기준금리(%)"].shift(lag)
-                corr_val = df_lag["평균매매가격(천만원)"].corr(shifted_rate)
-                correlations.append(corr_val)
-                
-            fig_lag, ax_lag = plt.subplots(figsize=(6, 4))
-            fig_lag.patch.set_facecolor('white')
-            
-            bars = ax_lag.bar(lags, correlations, color="#94A3B8", alpha=0.7)
-            ax_lag.axhline(0, color='#1E293B', linewidth=1.5)
-            
-            # 최적 시차(가장 강한 영향력) 도출
-            optimal_lag = int(np.nanargmax(np.abs(correlations)))
-            bars[optimal_lag].set_color("#DC2626")
-            bars[optimal_lag].set_alpha(1.0)
-            max_corr_val = correlations[optimal_lag]
-            
-            ax_lag.set_xlabel("시차 (개월)", fontweight='bold', color='#475569')
-            ax_lag.set_ylabel("상관계수 (R)", fontweight='bold', color='#475569')
-            ax_lag.set_xticks(lags)
-            
-            ax_lag.spines['top'].set_visible(False)
-            ax_lag.spines['right'].set_visible(False)
-            ax_lag.spines['left'].set_color('#94A3B8')
-            ax_lag.spines['bottom'].set_color('#94A3B8')
-            
-            fig_lag.tight_layout()
-            st.pyplot(fig_lag)
-        else:
-            st.warning("시차 분석을 수행하기 위한 데이터(최소 1년 이상)가 부족합니다.")
-
-    with colD:
-        if len(df_lag) > 12:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class="analysis-card" style="min-height: 250px; background-color: #FEF2F2; border-left: 5px solid #DC2626;">
-                <div class="analysis-title">⏳ 기준금리 파급 시차(Time-Lag) 진단</div>
-                <div class="analysis-content">
-                    한국은행이 기준금리를 올리거나 내렸을 때, 이 지역 아파트값에 <b>가장 강한 충격이 도달하는 시간(개월 수)</b>을 계산했습니다.
-                    <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
-                        <li>분석 결과, 금리 변동은 평균적으로 <b><span style="color:#DC2626; font-size:1.1rem; font-weight:bold;">{optimal_lag}개월 뒤</span></b>의 매매가와 가장 강한 상관관계({max_corr_val:.2f})를 보입니다.</li>
-                    </ul>
-                    <div style="margin-top: 10px; padding: 10px; background-color: #ffffff; border-radius: 8px; border: 1px solid #FCA5A5;">
-                        <span style="font-size:0.9rem; color:#991B1B;">💡 <b>인사이트:</b> 이제 하단에 그려질 모든 예측 모델은 이 <b>{optimal_lag}개월의 시간차</b>를 인과관계로 적용하여, 과거의 확실한 지표를 바탕으로 미래를 선행 예측합니다.</span>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
 st.markdown("<br>", unsafe_allow_html=True)
+# -------------------------------------------------
+# 2단 하단: 거래량 및 평균매매가 추세 예측 (★ 이중 시차 분리 적용)
+# -------------------------------------------------
+colC, colD = st.columns(2)
+
+df_pred_all = filtered[["연월", "기준금리(%)", "거래량", "평균매매가격(천만원)"]].copy().sort_values("연월")
+
+# 거래량용 시차와 매매가용 시차를 따로 만듭니다.
+df_pred_all['시차반영_기준금리_v'] = df_pred_all['기준금리(%)'].shift(optimal_lag_v)
+df_pred_all['시차반영_기준금리_p'] = df_pred_all['기준금리(%)'].shift(optimal_lag_p)
+df_train = df_pred_all.dropna()
+
+last_date = df_pred_all["연월"].iloc[-1]
+future_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), end='2026-12-01', freq='MS')
+current_rate = df_pred_all['기준금리(%)'].iloc[-1]
+
+all_dates = list(df_pred_all['연월']) + list(future_dates)
+all_rates = list(df_pred_all['기준금리(%)']) + [current_rate] * len(future_dates)
+df_future_full = pd.DataFrame({'연월': all_dates, '기준금리(%)': all_rates})
+df_future_full['시차반영_기준금리_v'] = df_future_full['기준금리(%)'].shift(optimal_lag_v)
+df_future_full['시차반영_기준금리_p'] = df_future_full['기준금리(%)'].shift(optimal_lag_p)
+df_future_only = df_future_full[df_future_full['연월'] > last_date].copy()
+
+with colC:
+    st.markdown("#### 2. 거래량 추세 및 2026년 예측")
+    fig1, ax1 = plt.subplots(figsize=(6, 4))
+    fig1.patch.set_facecolor('white')
+    
+    if len(df_train) >= 3:
+        model_vol = LinearRegression()
+        model_vol.fit(df_train[['시차반영_기준금리_v']], df_train['거래량'])
+        df_future_only['예측_거래량'] = model_vol.predict(df_future_only[['시차반영_기준금리_v']])
+        
+        ax1.fill_between(df_train["연월"], df_train["거래량"], color="#3B82F6", alpha=0.15)
+        ax1.plot(df_train["연월"], df_train["거래량"], color="#1D4ED8", linewidth=2.5, label="실제 거래량")
+        
+        last_train_row = pd.DataFrame({'연월': [df_train['연월'].iloc[-1]], '예측_거래량': [df_train['거래량'].iloc[-1]]})
+        plot_future_v = pd.concat([last_train_row, df_future_only])
+        
+        ax1.plot(plot_future_v["연월"], plot_future_v["예측_거래량"], linestyle="--", color="#F59E0B", linewidth=2.5, label=f"2026 예측 ({optimal_lag_v}개월 시차)")
+        
+        ax1.grid(alpha=0.3, linestyle='--', color='#CBD5E1')
+        ax1.spines['top'].set_visible(False)
+        ax1.spines['right'].set_visible(False)
+        ax1.spines['left'].set_color('#94A3B8')
+        ax1.spines['bottom'].set_color('#94A3B8')
+        ax1.tick_params(colors='#475569', labelsize=9)
+        ax1.set_ylabel("거래량 (건)", color='#475569', fontweight='bold', fontsize=10)
+        
+        ax1.legend(loc='lower left', bbox_to_anchor=(0.0, 1.02), ncol=2, frameon=False, fontsize=9)
+        plt.xticks(rotation=45, ha='right')
+        fig1.tight_layout()
+        st.pyplot(fig1)
+        
+        st.markdown(f"""
+        <div class="analysis-card" style="margin-top: 10px; min-height: 190px;">
+            <div class="analysis-title">📈 2. 거래량(수요) 예측 논리</div>
+            <div class="analysis-content">
+                선행 지표인 거래량은 금리 충격에 가장 먼저 반응합니다. <b>{optimal_lag_v}개월 전의 금리</b> 데이터를 선형 회귀에 학습시켜 2026년 매수 심리의 회복 탄력성을 예측합니다.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+with colD:
+    st.markdown("#### 3. 평균매매가 추세 및 2026 예측")
+    fig1_p, ax1_p = plt.subplots(figsize=(6, 4))
+    fig1_p.patch.set_facecolor('white')
+    
+    if len(df_train) >= 3:
+        model_price = LinearRegression()
+        model_price.fit(df_train[['시차반영_기준금리_p']], df_train['평균매매가격(천만원)'])
+        df_future_only['예측_매매가'] = model_price.predict(df_future_only[['시차반영_기준금리_p']])
+        
+        ax1_p.fill_between(df_train["연월"], df_train["평균매매가격(천만원)"], color="#10B981", alpha=0.15)
+        ax1_p.plot(df_train["연월"], df_train["평균매매가격(천만원)"], color="#047857", linewidth=2.5, label="실제 매매가")
+        
+        last_train_row_p = pd.DataFrame({'연월': [df_train['연월'].iloc[-1]], '예측_매매가': [df_train['평균매매가격(천만원)'].iloc[-1]]})
+        plot_future_p = pd.concat([last_train_row_p, df_future_only])
+        
+        ax1_p.plot(plot_future_p["연월"], plot_future_p["예측_매매가"], linestyle="--", color="#F59E0B", linewidth=2.5, label=f"2026 예측 ({optimal_lag_p}개월 시차)")
+        
+        ax1_p.grid(alpha=0.3, linestyle='--', color='#CBD5E1')
+        ax1_p.spines['top'].set_visible(False)
+        ax1_p.spines['right'].set_visible(False)
+        ax1_p.spines['left'].set_color('#94A3B8')
+        ax1_p.spines['bottom'].set_color('#94A3B8')
+        ax1_p.tick_params(colors='#475569', labelsize=9)
+        ax1_p.set_ylabel("평균매매가격 (천만원)", color='#475569', fontweight='bold', fontsize=10)
+        
+        ax1_p.legend(loc='lower left', bbox_to_anchor=(0.0, 1.02), ncol=2, frameon=False, fontsize=9)
+        plt.xticks(rotation=45, ha='right')
+        fig1_p.tight_layout()
+        st.pyplot(fig1_p)
+        
+        st.markdown(f"""
+        <div class="analysis-card" style="margin-top: 10px; min-height: 190px;">
+            <div class="analysis-title">💰 3. 평균매매가(자산가치) 예측 논리</div>
+            <div class="analysis-content">
+                매매가는 수요가 움직인 후 후행하는 성질을 가집니다. <b>{optimal_lag_p}개월 전의 금리</b> 에너지가 2026년 가격 방어선에 어떻게 투영되는지 후행 추세선을 도출했습니다.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # -------------------------------------------------
 # 2단 하단: 거래량 및 평균매매가 추세 예측 (★ 시차 적용 선형회귀)
@@ -654,14 +697,14 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =================================================
-# [STEP 4-2] 머신러닝 다중 모델 검증 (선형회귀 & 랜덤포레스트 - ★ 시차 적용)
+# [STEP 4-2] 머신러닝 다중 모델 검증 (선형회귀 & 랜덤포레스트)
 # =================================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("### 📊 머신러닝 다중 모델: 시장 핵심 동인(Driver) 추출")
-st.caption(f"선택한 지역의 가격 변동에 대해 '**{optimal_lag}개월 전 기준금리**'와 '현재 거래량(수요)' 중 어떤 요인이 실질적으로 더 강력한 영향을 미치는지 교차 분석합니다.")
+st.caption(f"선택한 지역의 '가격 변동'에 대해 '**{optimal_lag_p}개월 전 기준금리**'와 '현재 거래량(수요)' 중 어떤 요인이 실질적으로 더 강력한 영향을 미치는지 교차 분석합니다.")
 
 df_ml = filtered[["연월", "기준금리(%)", "거래량", "평균매매가격(천만원)"]].copy().sort_values("연월")
-df_ml["시차반영_기준금리"] = df_ml["기준금리(%)"].shift(optimal_lag)
+df_ml["시차반영_기준금리"] = df_ml["기준금리(%)"].shift(optimal_lag_p) # 가격 예측이므로 optimal_lag_p 사용
 df_ml = df_ml.dropna()
 
 if len(df_ml) > 5:
