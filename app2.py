@@ -655,7 +655,7 @@ with colD:
         df_future_only['예측_매매가'] = model_price.predict(df_future_only[['시차반영_기준금리_p']])
         
         ax1_p.fill_between(df_train["연월"], df_train["평균매매가격(천만원)"], color="#10B981", alpha=0.15)
-        ax1_p.plot(df_train["연월"], df_train["평균매매가격(천만원)"], color="#047857", linewidth=2.5, label="평균균 매매가")
+        ax1_p.plot(df_train["연월"], df_train["평균매매가격(천만원)"], color="#047857", linewidth=2.5, label="평균 매매가")
         
         last_train_row_p = pd.DataFrame({'연월': [df_train['연월'].iloc[-1]], '예측_매매가': [df_train['평균매매가격(천만원)'].iloc[-1]]})
         plot_future_p = pd.concat([last_train_row_p, df_future_only])
