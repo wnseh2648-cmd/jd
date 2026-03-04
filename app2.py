@@ -585,7 +585,7 @@ colC, colD = st.columns(2)
 
 # [왼쪽] 거래량: 시차 분석 빼고, 원래의 '시간 흐름(t)에 따른 추세선'으로 원상복구
 with colC:
-    st.markdown("#### 2. 거래량 추세 및 2026년 예측")
+    st.markdown("#### 2. 거래량 추세 및 2026년 예측(시차분석 미반영)")
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     fig1.patch.set_facecolor('white')
     
@@ -629,7 +629,7 @@ with colC:
 
 # [오른쪽] 매매가: 금리 시차(optimal_lag_p)를 적용한 머신러닝 예측 유지
 with colD:
-    st.markdown("#### 3. 평균매매가 추세 및 2026 예측")
+    st.markdown("#### 3. 평균매매가 추세 및 2026 예측(시차분석 반영)")
     
     # 매매가 예측용 시차 데이터 준비
     df_pred_all = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].copy().sort_values("연월")
@@ -794,20 +794,27 @@ if len(df_ml) > 5:
         </div>
         """, unsafe_allow_html=True)
 
-    if importances[0] > importances[1]:
-        stronger_feature_name = "기준금리(거시경제)"
-        stronger_feature_reason = f"수급(거래량) 변화보다 {optimal_lag_p}개월 전에 발생한 금리 변동 충격에 훨씬 더 취약하게 반응"
+# -------------------------------------------------
+    # 💡 비율에 따른 다이내믹 결론 도출 (3단계)
+    # -------------------------------------------------
+    rate_ratio = importances[0] * 100
+    vol_ratio = importances[1] * 100
+    region_name = filtered['지역'].iloc[0]
+
+    if rate_ratio >= 70:
+        conclusion_text = f"현재 <span class='highlight'>{region_name}</span> 지역은 <b>거시경제(기준금리)의 강력한 지배</b>를 받고 있습니다. 지역 내의 자체적인 매수세(거래량) 회복만으로는 가격 하방 압력을 이겨내기 어려우며, 철저히 매크로 지표(금리 인하 등) 시그널에 맞춰 전략을 짜야 하는 <b>'매크로 종속형 시장'</b>임을 데이터가 증명합니다."
+        
+    elif vol_ratio >= 50:
+        conclusion_text = f"현재 <span class='highlight'>{region_name}</span> 지역은 이례적으로 외부 금리 충격보다 <b>'지역 자체의 매수세(거래량)'</b>가 가격을 견인하는 <b>'수급 주도형 시장'</b>입니다. 매크로 경제가 흔들리더라도, 지역 내의 탄탄한 실거주 및 투자 수요가 가격을 강력하게 방어하거나 밀어 올리고 있음을 시사합니다."
+        
     else:
-        stronger_feature_name = "거래량(지역 수급)"
-        stronger_feature_reason = "거시적인 금리 충격보다는 해당 지역 내의 실질적인 매수세(거래 활성화) 여부에 따라 가격이 직접적으로 연동"
+        conclusion_text = f"현재 <span class='highlight'>{region_name}</span> 지역은 거시경제(금리 압력)와 미시적 수급(거래량 회복)이 <b>팽팽하게 힘겨루기</b>를 하고 있는 과도기적 시장입니다. 한 가지 지표에 맹신하기보다, 거시적 금리 변동성을 체크함과 동시에 해당 지역의 <b>실거래 유입 동향을 매월 예의주시</b>해야 하는 중요한 변곡점 구간입니다."
 
     st.markdown(f"""
     <div class="analysis-card" style="border-left: 5px solid #F59E0B; background-color: #FFFBEB; margin-top: 0.5rem;">
         <div class="analysis-title" style="color: #B45309;">📌 애널리스트 최종 결론</div>
         <div class="analysis-content" style="color: #92400E; font-weight:500; font-size: 1rem; line-height: 1.7;">
-            시차 분석이 적용된 두 가지 머신러닝 알고리즘을 종합 분석한 결과, 현재 <span class="highlight">{filtered['지역'].iloc[0]}</span> 지역의 집값은 
-            <b>'{stronger_feature_name}'</b> 요인에 의해 지배적인 영향을 받고 있습니다. 
-            이는 본 지역이 {stronger_feature_reason}하고 있음을 데이터로 증명합니다.
+            시차 분석이 적용된 두 가지 AI 알고리즘 교차 검증 결과, {conclusion_text}
         </div>
     </div>
     """, unsafe_allow_html=True)
