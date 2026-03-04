@@ -727,7 +727,7 @@ if len(df_ml) > 5:
         fig_ml, ax_ml = plt.subplots(figsize=(5, 5))
         fig_ml.patch.set_facecolor('white')
         
-        features = [f'기준금리\n({optimal_lag_p}개월 전)', '거래래량(현재)']
+        features = [f'기준금리\n({optimal_lag_p}개월 전)', '거래량(현재)']
         coefs = [coef_rate, coef_vol]
         colors = ['#F87171' if c < 0 else '#1D4ED8' for c in coefs]
         
@@ -794,7 +794,7 @@ if len(df_ml) > 5:
         stronger_feature_name = "기준금리(거시경제)"
         stronger_feature_reason = f"수급(거래량) 변화보다 {optimal_lag_p}개월 전에 발생한 금리 변동 충격에 훨씬 더 취약하게 반응"
     else:
-        stronger_feature_name = "매매량(지역 수급)"
+        stronger_feature_name = "거래량(지역 수급)"
         stronger_feature_reason = "거시적인 금리 충격보다는 해당 지역 내의 실질적인 매수세(거래 활성화) 여부에 따라 가격이 직접적으로 연동"
 
     st.markdown(f"""
