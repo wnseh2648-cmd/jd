@@ -818,7 +818,7 @@ st.markdown("---")
 st.markdown("### 🤖 실시간 AI 부동산 애널리스트 리포트")
 
 if prompt := st.chat_input("질문을 입력하세요 (예: 부산지역 26년도 아파트 전망 어때?, 해운대 롯데캐슬 집값 전망)"):
-    with st.spinner("빅데이터 분석 및 GPT-5.2 추론을 진행 중입니다... 잠시만 기다려주세요."):
+    with st.spinner("빅데이터 분석 및 GPT-4o 추론을 진행 중입니다... 잠시만 기다려주세요."):
         lawd_cd, matched_area = detect_lawd_cd_from_question(prompt)
         target_region = detect_region_from_question(prompt) or resolve_macro_region_name(region_from_lawd_cd(lawd_cd)) or region
         
