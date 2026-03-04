@@ -426,63 +426,124 @@ st.markdown("### 📈 데이터 상관관계 및 2026년 추세 예측")
 st.caption("거시 지표 간의 인과관계를 파악하고, 이를 바탕으로 2026년까지의 수요(거래량)와 가격(매매가) 추이를 선형 회귀로 예측합니다.")
 
 # -------------------------------------------------
-# 1단 상단: 상관관계 히트맵 (먼저 보여주기)
+# 1단 상단: 상관관계 히트맵 및 시차 분석 (Tabs 활용)
 # -------------------------------------------------
-colA, colB = st.columns([1, 1])
+tab1, tab2 = st.tabs(["🔥 1. 거시 지표 동시성 상관관계 (Heatmap)", "⏳ 2. 기준금리 ➔ 매매가 시차(Time-Lag) 분석"])
 
-with colA:
-    st.markdown("#### 1. 거시 지표 상관관계 (Heatmap)")
-    fig2, ax2 = plt.subplots(figsize=(6, 4))
-    fig2.patch.set_facecolor('white')
-    cols = ["거래량", "평균매매가격(천만원)", "매매지수", "기준금리(%)"]
-    tmp_corr = filtered[cols].dropna()
-    
-    if len(tmp_corr) >= 3:
-        corr = tmp_corr.corr()
-        im = ax2.imshow(corr, cmap="coolwarm", vmin=-1, vmax=1, aspect='auto', alpha=0.9)
+with tab1:
+    colA, colB = st.columns([1, 1])
+    with colA:
+        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        fig2.patch.set_facecolor('white')
+        cols = ["거래량", "평균매매가격(천만원)", "매매지수", "기준금리(%)"]
+        tmp_corr = filtered[cols].dropna()
         
-        ax2.set_xticks(range(len(cols)))
-        ax2.set_yticks(range(len(cols)))
-        ax2.set_xticklabels(cols, rotation=30, ha="right", fontsize=9, color='#475569')
-        ax2.set_yticklabels(cols, fontsize=9, color='#475569')
-        
-        for edge, spine in ax2.spines.items():
-            spine.set_visible(False)
-        ax2.set_xticks(np.arange(corr.shape[1]+1)-.5, minor=True)
-        ax2.set_yticks(np.arange(corr.shape[0]+1)-.5, minor=True)
-        ax2.grid(which="minor", color="white", linestyle='-', linewidth=2.5)
-        ax2.tick_params(which="minor", bottom=False, left=False)
-        ax2.tick_params(axis='both', colors='#475569')
-        
-        for i in range(len(cols)):
-            for j in range(len(cols)):
-                text_col = "white" if abs(corr.iloc[i, j]) > 0.5 else "#1E293B"
-                ax2.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", color=text_col, fontweight='bold', fontsize=10)
-                
-        cbar = fig2.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
-        cbar.ax.tick_params(labelsize=8, colors='#475569')
-        
-        fig2.tight_layout()
-        st.pyplot(fig2)
+        if len(tmp_corr) >= 3:
+            corr = tmp_corr.corr()
+            im = ax2.imshow(corr, cmap="coolwarm", vmin=-1, vmax=1, aspect='auto', alpha=0.9)
+            
+            ax2.set_xticks(range(len(cols)))
+            ax2.set_yticks(range(len(cols)))
+            ax2.set_xticklabels(cols, rotation=30, ha="right", fontsize=9, color='#475569')
+            ax2.set_yticklabels(cols, fontsize=9, color='#475569')
+            
+            for edge, spine in ax2.spines.items():
+                spine.set_visible(False)
+            ax2.set_xticks(np.arange(corr.shape[1]+1)-.5, minor=True)
+            ax2.set_yticks(np.arange(corr.shape[0]+1)-.5, minor=True)
+            ax2.grid(which="minor", color="white", linestyle='-', linewidth=2.5)
+            ax2.tick_params(which="minor", bottom=False, left=False)
+            ax2.tick_params(axis='both', colors='#475569')
+            
+            for i in range(len(cols)):
+                for j in range(len(cols)):
+                    text_col = "white" if abs(corr.iloc[i, j]) > 0.5 else "#1E293B"
+                    ax2.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center", color=text_col, fontweight='bold', fontsize=10)
+                    
+            cbar = fig2.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
+            cbar.ax.tick_params(labelsize=8, colors='#475569')
+            
+            fig2.tight_layout()
+            st.pyplot(fig2)
 
-with colB:
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class="analysis-card" style="margin-top: 10px; min-height: 250px; background-color: #F8FAFC; border-left: 5px solid #3B82F6;">
-        <div class="analysis-title">📊 1. 거시 지표 상관관계 (Heatmap) 해석</div>
-        <div class="analysis-content">
-            부동산 시장을 움직이는 핵심 지표 간의 <b>인과관계</b>를 숫자로 증명합니다.
-            <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
-                <li><b>금리와 매매가/거래량 (파란색 띄는 경우):</b> 금리가 오르면 대출 이자 부담으로 매수 심리가 얼어붙어, 거래량이 줄고 가격이 하락하는 전형적인 <b>역상관관계(-)</b>를 보여줍니다.</li>
-                <li><b>거래량과 매매가 (빨간색 띄는 경우):</b> 시장에 매수자가 많아져 거래가 활발해질수록 실거래가가 점진적으로 상승하는 <b>정상관관계(+)</b> 패턴을 의미합니다.</li>
-            </ul>
-            <span style="font-size:0.85rem; color:#64748B;">※ 지역마다 금리 민감도가 다릅니다. 이 숫자의 절대값이 클수록 외부 경제 충격에 크게 흔들리는 지역임을 뜻합니다.</span>
+    with colB:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="analysis-card" style="min-height: 250px; background-color: #F8FAFC; border-left: 5px solid #3B82F6;">
+            <div class="analysis-title">📊 동시성 상관관계 (Heatmap) 해석</div>
+            <div class="analysis-content">
+                현재 시점(동일 연월)에서 지표 간의 <b>인과관계</b>를 숫자로 증명합니다.
+                <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
+                    <li><b>금리와 매매가/거래량 (파란색):</b> 금리가 오르면 매수 심리가 얼어붙어, 거래량이 줄고 가격이 하락하는 전형적인 <b>역상관관계(-)</b>입니다.</li>
+                    <li><b>거래량과 매매가 (빨간색):</b> 매수세가 활발해질수록 가격이 점진적으로 상승하는 <b>정상관관계(+)</b>입니다.</li>
+                </ul>
+                <span style="font-size:0.85rem; color:#64748B;">※ 단, 부동산 시장은 금리 변동이 즉각적으로 반영되지 않고 서서히 스며드는 특성이 있습니다. (옆 탭의 시차 분석 참조)</span>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+
+with tab2:
+    colC, colD = st.columns([1, 1])
+    with colC:
+        df_lag = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].dropna().sort_values("연월")
+        
+        if len(df_lag) > 12:
+            max_lag = 12
+            lags = np.arange(0, max_lag + 1)
+            correlations = []
+            
+            # 0개월부터 12개월까지 기준금리를 뒤로 미루면서 매매가와의 상관계수 계산
+            for lag in lags:
+                shifted_rate = df_lag["기준금리(%)"].shift(lag)
+                corr_val = df_lag["평균매매가격(천만원)"].corr(shifted_rate)
+                correlations.append(corr_val)
+                
+            fig_lag, ax_lag = plt.subplots(figsize=(6, 4))
+            fig_lag.patch.set_facecolor('white')
+            
+            # 시각화 (막대그래프)
+            bars = ax_lag.bar(lags, correlations, color="#94A3B8", alpha=0.7)
+            ax_lag.axhline(0, color='#1E293B', linewidth=1.5)
+            
+            # 절대값이 가장 큰(영향력이 가장 강한) 시차 찾아서 빨간색으로 강조
+            max_abs_idx = np.nanargmax(np.abs(correlations))
+            bars[max_abs_idx].set_color("#DC2626")
+            bars[max_abs_idx].set_alpha(1.0)
+            max_corr_val = correlations[max_abs_idx]
+            
+            ax_lag.set_xlabel("시차 (개월)", fontweight='bold', color='#475569')
+            ax_lag.set_ylabel("상관계수 (R)", fontweight='bold', color='#475569')
+            ax_lag.set_xticks(lags)
+            
+            ax_lag.spines['top'].set_visible(False)
+            ax_lag.spines['right'].set_visible(False)
+            ax_lag.spines['left'].set_color('#94A3B8')
+            ax_lag.spines['bottom'].set_color('#94A3B8')
+            
+            fig_lag.tight_layout()
+            st.pyplot(fig_lag)
+        else:
+            st.warning("시차 분석을 수행하기 위한 데이터(최소 1년 이상)가 부족합니다. 기간을 더 넓게 설정해주세요.")
+
+    with colD:
+        if len(df_lag) > 12:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="analysis-card" style="min-height: 250px; background-color: #FEF2F2; border-left: 5px solid #DC2626;">
+                <div class="analysis-title">⏳ 기준금리 파급 시차(Time-Lag) 진단</div>
+                <div class="analysis-content">
+                    한국은행이 기준금리를 올리거나 내렸을 때, 이 지역 아파트값에 <b>가장 강한 충격이 도달하는 시간(개월 수)</b>을 머신러닝으로 추적했습니다.
+                    <ul style="margin-top: 0.8rem; margin-bottom: 0.8rem; line-height:1.8;">
+                        <li>분석 결과, 금리 변동은 평균적으로 <b><span style="color:#DC2626; font-size:1.1rem; font-weight:bold;">{max_abs_idx}개월 뒤</span></b>의 매매가와 가장 강한 상관관계({max_corr_val:.2f})를 보입니다.</li>
+                    </ul>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #ffffff; border-radius: 8px; border: 1px solid #FCA5A5;">
+                        <span style="font-size:0.9rem; color:#991B1B;">💡 <b>인사이트:</b> 즉, 오늘 금리가 내렸다면 당장 내일 집값이 오르는 것이 아니라, 약 <b>{max_abs_idx}개월 후</b>에 본격적인 가격 반등장(또는 하락장)이 펼쳐질 확률이 매우 높음을 데이터가 증명합니다.</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
-
 # -------------------------------------------------
 # 2단 하단: 거래량 및 평균매매가 추세 예측
 # -------------------------------------------------
