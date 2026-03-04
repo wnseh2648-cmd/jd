@@ -532,43 +532,32 @@ with tab2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # -------------------------------------------------
-# 2단 하단: 거래량 및 평균매매가 추세 예측 (★ 시차 적용 선형회귀)
+# 2단 하단: 거래량 및 평균매매가 추세 예측
 # -------------------------------------------------
 colC, colD = st.columns(2)
 
-# 공통 예측 모델 준비
-df_pred_all = filtered[["연월", "기준금리(%)", "거래량", "평균매매가격(천만원)"]].copy().sort_values("연월")
-df_pred_all['시차반영_기준금리'] = df_pred_all['기준금리(%)'].shift(optimal_lag)
-df_train = df_pred_all.dropna()
-
-last_date = df_pred_all["연월"].iloc[-1]
-future_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), end='2026-12-01', freq='MS')
-current_rate = df_pred_all['기준금리(%)'].iloc[-1]
-
-all_dates = list(df_pred_all['연월']) + list(future_dates)
-all_rates = list(df_pred_all['기준금리(%)']) + [current_rate] * len(future_dates)
-df_future_full = pd.DataFrame({'연월': all_dates, '기준금리(%)': all_rates})
-df_future_full['시차반영_기준금리'] = df_future_full['기준금리(%)'].shift(optimal_lag)
-df_future_only = df_future_full[df_future_full['연월'] > last_date].copy()
-
+# [왼쪽] 원래 사용자님의 거래량 추세 분석 코드 복구
 with colC:
     st.markdown("#### 2. 거래량 추세 및 2026년 예측")
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     fig1.patch.set_facecolor('white')
+    df_pred = filtered[["연월", "거래량"]].dropna().copy().reset_index(drop=True)
     
-    if len(df_train) >= 3:
-        # 시차 반영 금리로 거래량을 예측하는 선형 회귀
-        model_vol = LinearRegression()
-        model_vol.fit(df_train[['시차반영_기준금리']], df_train['거래량'])
-        df_future_only['예측_거래량'] = model_vol.predict(df_future_only[['시차반영_기준금리']])
+    if len(df_pred) >= 3:
+        df_pred["t"] = np.arange(len(df_pred))
+        coef = np.polyfit(df_pred["t"], df_pred["거래량"], 1)
+        all_future = pd.date_range(start=df_pred["연월"].iloc[-1] + pd.offsets.MonthBegin(1), end=pd.Timestamp("2026-12-01"), freq="MS")
         
-        ax1.fill_between(df_train["연월"], df_train["거래량"], color="#3B82F6", alpha=0.15)
-        ax1.plot(df_train["연월"], df_train["거래량"], color="#1D4ED8", linewidth=2.5, label="실제 거래량")
+        ax1.fill_between(df_pred["연월"], df_pred["거래량"], color="#3B82F6", alpha=0.15)
+        ax1.plot(df_pred["연월"], df_pred["거래량"], color="#1D4ED8", linewidth=2.5, label="실제 거래량")
         
-        last_train_row = pd.DataFrame({'연월': [df_train['연월'].iloc[-1]], '예측_거래량': [df_train['거래량'].iloc[-1]]})
-        plot_future_v = pd.concat([last_train_row, df_future_only])
-        
-        ax1.plot(plot_future_v["연월"], plot_future_v["예측_거래량"], linestyle="--", color="#F59E0B", linewidth=2.5, label="2026 추세 예측")
+        if len(all_future) > 0:
+            last_date = df_pred["연월"].iloc[-1]
+            future_dates = [last_date] + list(all_future[all_future.year == 2026])
+            last_t = len(df_pred) - 1
+            future_t = np.arange(last_t, last_t + len(all_future[all_future.year == 2026]) + 1)
+            future_vals = coef[0] * future_t + coef[1]
+            ax1.plot(future_dates, future_vals, linestyle="--", color="#F59E0B", linewidth=2.5, label="2026 예측")
         
         ax1.grid(alpha=0.3, linestyle='--', color='#CBD5E1')
         ax1.spines['top'].set_visible(False)
@@ -583,21 +572,39 @@ with colC:
         fig1.tight_layout()
         st.pyplot(fig1)
         
-        st.markdown(f"""
+        st.markdown("""
         <div class="analysis-card" style="margin-top: 10px; min-height: 190px; display: flex; flex-direction: column; justify-content: center;">
             <div class="analysis-title">📈 2. 거래량(수요) 추세 해석</div>
             <div class="analysis-content" style="line-height: 1.6;">
-                단순한 시간 흐름이 아닌, <b>'{optimal_lag}개월 전 금리 변동'</b>이라는 확실한 선행 지표를 선형 회귀로 학습했습니다.<br>
-                현재의 기준금리가 유지된다고 가정할 때, 파급 시차가 적용된 <b>2026년 매수세(노란 점선)</b>를 수학적으로 예측합니다.<br>
+                시장의 선행 지표인 <b>'수요(매수 심리)'</b>의 흐름을 분석합니다.<br>
+                과거의 매매 빈도(파란 실선)를 선형 회귀로 학습하여 <b>2026년 매수세(노란 점선)</b>를 예측합니다.<br>
                 <div style="margin-top: 10px; padding: 10px; background-color: #EFF6FF; border-radius: 8px;">
-                    <span style="font-size:0.9rem; color:#1E40AF;">💡 <b>인사이트:</b> 점선이 우상향한다면, 과거의 금리 하락 효과가 드디어 시장에 도달하여 대기 수요가 진입하고 있음을 의미합니다.</span>
+                    <span style="font-size:0.9rem; color:#1E40AF;">💡 <b>인사이트:</b> 점선이 우상향을 그린다면, 관망하던 대기 수요자들이 시장에 다시 진입하며 거래 빈도가 점진적으로 회복되고 있음을 시사합니다.</span>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
+
+# [오른쪽] 시차 분석이 완벽히 적용된 매매가 추세 분석
 with colD:
     st.markdown("#### 3. 평균매매가 추세 및 2026 예측")
+    
+    # 공통 예측 모델 준비
+    df_pred_all = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].copy().sort_values("연월")
+    df_pred_all['시차반영_기준금리'] = df_pred_all['기준금리(%)'].shift(optimal_lag)
+    df_train = df_pred_all.dropna()
+
+    last_date = df_pred_all["연월"].iloc[-1]
+    future_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), end='2026-12-01', freq='MS')
+    current_rate = df_pred_all['기준금리(%)'].iloc[-1]
+
+    all_dates = list(df_pred_all['연월']) + list(future_dates)
+    all_rates = list(df_pred_all['기준금리(%)']) + [current_rate] * len(future_dates)
+    df_future_full = pd.DataFrame({'연월': all_dates, '기준금리(%)': all_rates})
+    df_future_full['시차반영_기준금리'] = df_future_full['기준금리(%)'].shift(optimal_lag)
+    df_future_only = df_future_full[df_future_full['연월'] > last_date].copy()
+    
     fig1_p, ax1_p = plt.subplots(figsize=(6, 4))
     fig1_p.patch.set_facecolor('white')
     
