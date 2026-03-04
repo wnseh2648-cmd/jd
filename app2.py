@@ -579,46 +579,33 @@ with tab3:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # -------------------------------------------------
-# 2단 하단: 거래량 및 평균매매가 추세 예측 (★ 이중 시차 분리 적용)
+# 2단 하단: 거래량 및 평균매매가 추세 예측 
 # -------------------------------------------------
 colC, colD = st.columns(2)
 
-df_pred_all = filtered[["연월", "기준금리(%)", "거래량", "평균매매가격(천만원)"]].copy().sort_values("연월")
-
-# 💡 위에서 만든 거래량용 시차(_v)와 매매가용 시차(_p)를 각각 생성합니다.
-df_pred_all['시차반영_기준금리_v'] = df_pred_all['기준금리(%)'].shift(optimal_lag_v)
-df_pred_all['시차반영_기준금리_p'] = df_pred_all['기준금리(%)'].shift(optimal_lag_p)
-df_train = df_pred_all.dropna()
-
-last_date = df_pred_all["연월"].iloc[-1]
-future_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), end='2026-12-01', freq='MS')
-current_rate = df_pred_all['기준금리(%)'].iloc[-1]
-
-all_dates = list(df_pred_all['연월']) + list(future_dates)
-all_rates = list(df_pred_all['기준금리(%)']) + [current_rate] * len(future_dates)
-df_future_full = pd.DataFrame({'연월': all_dates, '기준금리(%)': all_rates})
-df_future_full['시차반영_기준금리_v'] = df_future_full['기준금리(%)'].shift(optimal_lag_v)
-df_future_full['시차반영_기준금리_p'] = df_future_full['기준금리(%)'].shift(optimal_lag_p)
-df_future_only = df_future_full[df_future_full['연월'] > last_date].copy()
-
-# [왼쪽] 거래량 (거래량 시차인 optimal_lag_v 적용)
+# [왼쪽] 거래량: 시차 분석 빼고, 원래의 '시간 흐름(t)에 따른 추세선'으로 원상복구
 with colC:
     st.markdown("#### 2. 거래량 추세 및 2026년 예측")
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     fig1.patch.set_facecolor('white')
     
-    if len(df_train) >= 3:
-        model_vol = LinearRegression()
-        model_vol.fit(df_train[['시차반영_기준금리_v']], df_train['거래량'])
-        df_future_only['예측_거래량'] = model_vol.predict(df_future_only[['시차반영_기준금리_v']])
+    df_vol = filtered[["연월", "거래량"]].dropna().copy().reset_index(drop=True)
+    
+    if len(df_vol) >= 3:
+        df_vol["t"] = np.arange(len(df_vol))
+        coef = np.polyfit(df_vol["t"], df_vol["거래량"], 1)
+        all_future = pd.date_range(start=df_vol["연월"].iloc[-1] + pd.offsets.MonthBegin(1), end=pd.Timestamp("2026-12-01"), freq="MS")
         
-        ax1.fill_between(df_train["연월"], df_train["거래량"], color="#3B82F6", alpha=0.15)
-        ax1.plot(df_train["연월"], df_train["거래량"], color="#1D4ED8", linewidth=2.5, label="실제 거래량")
+        ax1.fill_between(df_vol["연월"], df_vol["거래량"], color="#3B82F6", alpha=0.15)
+        ax1.plot(df_vol["연월"], df_vol["거래량"], color="#1D4ED8", linewidth=2.5, label="실제 거래량")
         
-        last_train_row = pd.DataFrame({'연월': [df_train['연월'].iloc[-1]], '예측_거래량': [df_train['거래량'].iloc[-1]]})
-        plot_future_v = pd.concat([last_train_row, df_future_only])
-        
-        ax1.plot(plot_future_v["연월"], plot_future_v["예측_거래량"], linestyle="--", color="#F59E0B", linewidth=2.5, label=f"2026 예측 ({optimal_lag_v}개월 시차)")
+        if len(all_future) > 0:
+            last_date = df_vol["연월"].iloc[-1]
+            future_dates = [last_date] + list(all_future[all_future.year == 2026])
+            last_t = len(df_vol) - 1
+            future_t = np.arange(last_t, last_t + len(all_future[all_future.year == 2026]) + 1)
+            future_vals = coef[0] * future_t + coef[1]
+            ax1.plot(future_dates, future_vals, linestyle="--", color="#F59E0B", linewidth=2.5, label="2026 예측 (추세)")
         
         ax1.grid(alpha=0.3, linestyle='--', color='#CBD5E1')
         for spine in ['top', 'right']: ax1.spines[spine].set_visible(False)
@@ -630,18 +617,35 @@ with colC:
         fig1.tight_layout()
         st.pyplot(fig1)
         
-        st.markdown(f"""
+        st.markdown("""
         <div class="analysis-card" style="margin-top: 10px; min-height: 190px;">
-            <div class="analysis-title">📈 2. 거래량(수요) 예측 논리</div>
+            <div class="analysis-title">📈 2. 거래량(수요) 추세 해석</div>
             <div class="analysis-content">
-                선행 지표인 거래량은 금리 충격에 더 빨리 반응합니다. <b>{optimal_lag_v}개월 전의 금리</b> 데이터를 선형 회귀에 학습시켜 2026년 매수 심리의 회복 탄력성을 예측합니다.
+                시장의 선행 지표인 <b>'수요(매수 심리)'</b>의 전반적인 흐름을 분석합니다.<br>
+                과거의 매매 빈도(파란 실선)를 선형 회귀로 학습하여 <b>2026년 매수세(노란 점선)</b>를 시간 흐름에 따라 직관적으로 예측합니다.
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-# [오른쪽] 평균매매가 (매매가 시차인 optimal_lag_p 적용)
+# [오른쪽] 매매가: 금리 시차(optimal_lag_p)를 적용한 머신러닝 예측 유지
 with colD:
     st.markdown("#### 3. 평균매매가 추세 및 2026 예측")
+    
+    # 매매가 예측용 시차 데이터 준비
+    df_pred_all = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].copy().sort_values("연월")
+    df_pred_all['시차반영_기준금리_p'] = df_pred_all['기준금리(%)'].shift(optimal_lag_p)
+    df_train = df_pred_all.dropna()
+    
+    last_date_p = df_pred_all["연월"].iloc[-1]
+    future_dates_p = pd.date_range(start=last_date_p + pd.DateOffset(months=1), end='2026-12-01', freq='MS')
+    current_rate_p = df_pred_all['기준금리(%)'].iloc[-1]
+    
+    all_dates_p = list(df_pred_all['연월']) + list(future_dates_p)
+    all_rates_p = list(df_pred_all['기준금리(%)']) + [current_rate_p] * len(future_dates_p)
+    df_future_full = pd.DataFrame({'연월': all_dates_p, '기준금리(%)': all_rates_p})
+    df_future_full['시차반영_기준금리_p'] = df_future_full['기준금리(%)'].shift(optimal_lag_p)
+    df_future_only = df_future_full[df_future_full['연월'] > last_date_p].copy()
+    
     fig1_p, ax1_p = plt.subplots(figsize=(6, 4))
     fig1_p.patch.set_facecolor('white')
     
@@ -672,7 +676,7 @@ with colD:
         <div class="analysis-card" style="margin-top: 10px; min-height: 190px;">
             <div class="analysis-title">💰 3. 평균매매가(자산가치) 예측 논리</div>
             <div class="analysis-content">
-                매매가는 수요가 움직인 후 후행하는 성질을 가집니다. <b>{optimal_lag_p}개월 전의 금리</b> 데이터터가 2026년 가격 방어선에 어떻게 투영되는지 후행 추세선을 도출했습니다.
+                매매가는 수요가 움직인 후 후행하는 성질을 가집니다. <b>{optimal_lag_p}개월 전의 금리</b> 에너지가 2026년 가격 방어선에 어떻게 투영되는지 후행 추세선을 도출했습니다.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -680,9 +684,9 @@ with colD:
 # 종합 결론 박스
 st.markdown(f"""
 <div class="analysis-card" style="border-left: 5px solid #8B5CF6; background-color: #F5F3FF; margin-top: 0.5rem; padding: 1.2rem;">
-    <div class="analysis-title" style="color: #6D28D9; margin-bottom: 0.5rem;">💡 파이프라인 종합 코멘트 (이중 시차 메커니즘 적용)</div>
+    <div class="analysis-title" style="color: #6D28D9; margin-bottom: 0.5rem;">💡 파이프라인 종합 코멘트</div>
     <div class="analysis-content" style="color: #4C1D95; font-weight:500; font-size: 1.05rem; line-height: 1.6;">
-        본 시스템은 거시 지표가 시장에 도달하는 시차를 단일하게 보지 않고, <b>수요가 선행({optimal_lag_v}개월)하고 가격이 후행({optimal_lag_p}개월)하는 부동산 시장의 실제 메커니즘</b>을 파이썬 코드로 완벽하게 모사하여 2026년 예측의 정확도를 비약적으로 끌어올렸습니다.
+        본 시스템은 <b>거래량(수요)의 전반적인 시간적 흐름</b>을 직관적으로 파악하고, 동시에 거시 지표가 자산 시장에 도달하는 <b>최적 시차({optimal_lag_p}개월)를 가격 예측에 결합</b>하여, 2026년 부동산 시장의 방향성을 입체적으로 전망합니다.
     </div>
 </div>
 """, unsafe_allow_html=True)
