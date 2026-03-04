@@ -727,7 +727,7 @@ if len(df_ml) > 5:
         fig_ml, ax_ml = plt.subplots(figsize=(5, 5))
         fig_ml.patch.set_facecolor('white')
         
-        features = [f'기준금리\n({optimal_lag_p}개월 전)', '거래량(현재)']
+        features = [f'기준금리\n({optimal_lag_p}개월 전)', '거래량']
         coefs = [coef_rate, coef_vol]
         colors = ['#F87171' if c < 0 else '#1D4ED8' for c in coefs]
         
