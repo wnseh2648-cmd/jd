@@ -585,7 +585,7 @@ colC, colD = st.columns(2)
 
 # [왼쪽] 거래량: 시차 분석 빼고, 원래의 '시간 흐름(t)에 따른 추세선'으로 원상복구
 with colC:
-    st.markdown("#### 2. 거래량 추세 및 2026년 예측(시차분석 미반영)")
+    st.markdown("#### 2. 거래량 추세 및 2026년 예측(시차 미반영)")
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     fig1.patch.set_facecolor('white')
     
@@ -629,7 +629,7 @@ with colC:
 
 # [오른쪽] 매매가: 금리 시차(optimal_lag_p)를 적용한 머신러닝 예측 유지
 with colD:
-    st.markdown("#### 3. 평균매매가 추세 및 2026 예측(시차분석 반영)")
+    st.markdown("#### 3. 평균매매가 추세 및 2026 예측(시차 반영)")
     
     # 매매가 예측용 시차 데이터 준비
     df_pred_all = filtered[["연월", "기준금리(%)", "평균매매가격(천만원)"]].copy().sort_values("연월")
@@ -655,7 +655,7 @@ with colD:
         df_future_only['예측_매매가'] = model_price.predict(df_future_only[['시차반영_기준금리_p']])
         
         ax1_p.fill_between(df_train["연월"], df_train["평균매매가격(천만원)"], color="#10B981", alpha=0.15)
-        ax1_p.plot(df_train["연월"], df_train["평균매매가격(천만원)"], color="#047857", linewidth=2.5, label="실제 매매가")
+        ax1_p.plot(df_train["연월"], df_train["평균매매가격(천만원)"], color="#047857", linewidth=2.5, label="평균균 매매가")
         
         last_train_row_p = pd.DataFrame({'연월': [df_train['연월'].iloc[-1]], '예측_매매가': [df_train['평균매매가격(천만원)'].iloc[-1]]})
         plot_future_p = pd.concat([last_train_row_p, df_future_only])
